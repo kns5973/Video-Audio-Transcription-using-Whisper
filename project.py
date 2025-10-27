@@ -1,5 +1,5 @@
 import streamlit as st
-import whisper
+from faster_whisper import WhisperModel
 import traceback
 import time
 import os
@@ -8,18 +8,29 @@ import tempfile
 # Load Whisper model (cached by Streamlit for performance)
 @st.cache_resource
 def load_whisper_model():
-    return whisper.load_model("small")
+    # Load the "small" model.
+    # On Streamlit Cloud (CPU), this will automatically use "int8" compute type.
+    # If on a GPU, you could add device="cuda", compute_type="float16"
+    return WhisperModel("small", device="cpu", compute_type="int8")
 
 def transcribe_video(model, video_path):
     """Transcribes the video and returns the text."""
     try:
-        result = model.transcribe(video_path)
-        return True, result.get("text", "")
+        # The transcribe method returns a generator
+        segments, info = model.transcribe(video_path, beam_size=5)
+        
+        # We must iterate over the segments to get the full text
+        transcript_text = ""
+        for segment in segments:
+            transcript_text += segment.text + " "
+            
+        return True, transcript_text.strip()
+        
     except Exception as e:
         tb = traceback.format_exc()
         return False, f"Transcription failed: {e}\n{tb}"
 
-# --- Streamlit UI ---
+# --- Streamlit UI (This part remains exactly the same) ---
 
 def main():
     st.set_page_config(page_title="Video Transcriber", layout="wide")
