@@ -8,16 +8,19 @@ import tempfile
 # Load Whisper model (cached by Streamlit for performance)
 @st.cache_resource
 def load_whisper_model():
-    # Load the "small" model.
-    # On Streamlit Cloud (CPU), this will automatically use "int8" compute type.
-    # If on a GPU, you could add device="cuda", compute_type="float16"
+    # 1. Using "small" model
+    # 2. Optimized for CPU with "int8" compute type
     return WhisperModel("small", device="cpu", compute_type="int8")
 
 def transcribe_video(model, video_path):
     """Transcribes the video and returns the text."""
     try:
         # The transcribe method returns a generator
-        segments, info = model.transcribe(video_path, beam_size=5)
+        # 3. Added vad_filter=True to skip silence
+        segments, info = model.transcribe(video_path,
+                                          beam_size=5,
+                                          vad_filter=True,
+                                          vad_parameters=dict(min_silence_duration_ms=500))
         
         # We must iterate over the segments to get the full text
         transcript_text = ""
@@ -30,18 +33,19 @@ def transcribe_video(model, video_path):
         tb = traceback.format_exc()
         return False, f"Transcription failed: {e}\n{tb}"
 
-# --- Streamlit UI (This part remains exactly the same) ---
+# --- Streamlit UI (No changes needed here) ---
 
 def main():
     st.set_page_config(page_title="Video Transcriber", layout="wide")
-    st.title("Video Transcriber 🎧📝")
+    st.title("Fast Video Transcriber ⚡️🎧📝")
 
     # Instructions
     with st.expander("How it works", expanded=False):
         st.markdown("""
         This tool will:
-        1. Transcribe your video using **Whisper AI**.
-        2. Display the transcript for you to copy or download.
+        1. Transcribe your video using the optimized **faster-whisper** AI.
+        2. Use Voice Activity Detection (VAD) to skip silence and speed up processing.
+        3. Display the transcript for you to copy or download.
         
         **Requirement:**
         * A video file (MP4, MKV, AVI, MOV).
@@ -67,7 +71,7 @@ def main():
                 
                 # --- Transcription ---
                 start_transcribe = time.time()
-                with st.spinner("Transcribing video... This may take a while. ⏳"):
+                with st.spinner("Transcribing video... (skipping silence) ⏳"):
                     transcribe_ok, transcript_text = transcribe_video(model, video_path)
                 
                 if not transcribe_ok:
