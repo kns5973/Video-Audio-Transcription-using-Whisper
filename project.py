@@ -10,7 +10,7 @@ import tempfile
 def load_whisper_model():
     # 1. Using "small" model
     # 2. Optimized for CPU with "int8" compute type
-    return WhisperModel("small", device="cpu", compute_type="int8")
+    return WhisperModel("base", device="cpu", compute_type="int8")
 
 def transcribe_video(model, video_path):
     """Transcribes the video and returns the text."""
@@ -33,22 +33,18 @@ def transcribe_video(model, video_path):
         tb = traceback.format_exc()
         return False, f"Transcription failed: {e}\n{tb}"
 
-# --- Streamlit UI (No changes needed here) ---
+# --- Streamlit UI ---
 
 def main():
     st.set_page_config(page_title="Video Transcriber", layout="wide")
     st.title("Fast Video Transcriber ⚡️🎧📝")
 
-    # Instructions
-    with st.expander("How it works", expanded=False):
+    # Instructions (MODIFIED AS REQUESTED)
+    with st.expander("About this App", expanded=False):
         st.markdown("""
-        This tool will:
-        1. Transcribe your video using the optimized **faster-whisper** AI.
-        2. Use Voice Activity Detection (VAD) to skip silence and speed up processing.
-        3. Display the transcript for you to copy or download.
+        I built a web application that automatically transcribes video files. It's a 'speech-to-text' tool where a user can upload a video (like an MP4 or MKV), and the app processes it to extract all the spoken words, providing a full, downloadable text transcript. 
         
-        **Requirement:**
-        * A video file (MP4, MKV, AVI, MOV).
+        I built the user interface with **Streamlit** and used the **`faster-whisper`** library for the core AI transcription, focusing on making it as fast and efficient as possible for a web environment.
         """)
 
     # File Uploader
