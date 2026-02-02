@@ -4,70 +4,79 @@ import traceback
 import time
 import os
 import tempfile
+import yt_dlp
 
-# Load Whisper model (cached by Streamlit for performance)
 @st.cache_resource
 def load_whisper_model():
-    # 1. Using "small" model
-    # 2. Optimized for CPU with "int8" compute type
     return WhisperModel("base", device="cpu", compute_type="int8")
 
-def transcribe_video(model, video_path):
-    """Transcribes the video and returns the text."""
+def download_youtube_audio(url):
     try:
-        # The transcribe method returns a generator
-        # 3. Added vad_filter=True to skip silence
+        ydl_opts = {
+            'format': 'm4a/bestaudio/best',
+            'outtmpl': os.path.join(tempfile.gettempdir(), '%(id)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegExtractAudio',
+                'preferredcodec': 'm4a',
+            }],
+        }
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            return True, ydl.prepare_filename(info)
+    except Exception as e:
+        return False, str(e)
+
+def transcribe_video(model, video_path):
+    try:
         segments, info = model.transcribe(video_path,
-                                          beam_size=5,
-                                          vad_filter=True,
-                                          vad_parameters=dict(min_silence_duration_ms=500))
+                                         beam_size=5,
+                                         vad_filter=True,
+                                         vad_parameters=dict(min_silence_duration_ms=500))
         
-        # We must iterate over the segments to get the full text
         transcript_text = ""
         for segment in segments:
             transcript_text += segment.text + " "
             
         return True, transcript_text.strip()
-        
     except Exception as e:
         tb = traceback.format_exc()
         return False, f"Transcription failed: {e}\n{tb}"
-
-# --- Streamlit UI ---
 
 def main():
     st.set_page_config(page_title="Video Transcriber", layout="wide")
     st.title("Fast Video Transcriber ⚡️🎧📝")
 
-    # Instructions (MODIFIED AS REQUESTED)
-    with st.expander("About this App", expanded=False):
-        st.markdown("""
-        I built a web application that automatically transcribes video files. It's a 'speech-to-text' tool where a user can upload a video (like an MP4 or MKV), and the app processes it to extract all the spoken words, providing a full, downloadable text transcript. 
-        
-        I built the user interface with **Streamlit** and used the **`faster-whisper`** library for the core AI transcription, focusing on making it as fast and efficient as possible for a web environment.
-        """)
+    tab1, tab2 = st.tabs(["Upload File", "YouTube Link"])
 
-    # File Uploader
-    uploaded_file = st.file_uploader(
-        "Upload your video file",
-        type=["mp4", "mkv", "avi", "mov", "MP4", "MKV", "AVI", "MOV"]
-    )
+    with tab1:
+        uploaded_file = st.file_uploader(
+            "Upload your video file",
+            type=["mp4", "mkv", "avi", "mov"]
+        )
+    
+    with tab2:
+        yt_url = st.text_input("Paste YouTube URL here")
 
-    if uploaded_file is not None:
-        st.video(uploaded_file)
-        
-        if st.button("Transcribe Video", type="primary"):
-            # Save uploaded file to a temporary file
-            with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
-                tmp_file.write(uploaded_file.getvalue())
-                video_path = tmp_file.name
-            
+    if uploaded_file or yt_url:
+        if st.button("Transcribe", type="primary"):
+            video_path = None
             try:
                 model = load_whisper_model()
                 
-                # --- Transcription ---
+                with st.spinner("Preparing audio... ⏳"):
+                    if yt_url:
+                        success, result = download_youtube_audio(yt_url)
+                        if not success:
+                            st.error(f"YouTube Download Error: {result}")
+                            return
+                        video_path = result
+                    else:
+                        with tempfile.NamedTemporaryFile(delete=False, suffix=uploaded_file.name) as tmp_file:
+                            tmp_file.write(uploaded_file.getvalue())
+                            video_path = tmp_file.name
+
                 start_transcribe = time.time()
-                with st.spinner("Transcribing video... (skipping silence) ⏳"):
+                with st.spinner("Transcribing... (skipping silence) ⏳"):
                     transcribe_ok, transcript_text = transcribe_video(model, video_path)
                 
                 if not transcribe_ok:
@@ -77,21 +86,14 @@ def main():
                 elapsed_transcribe = time.time() - start_transcribe
                 st.success(f"Transcription complete in {elapsed_transcribe:.1f}s! 🎉")
 
-                # --- Display Results ---
                 st.subheader("Raw Transcript")
                 st.text_area("Transcript", transcript_text, height=400)
-                st.download_button(
-                    "Download Transcript",
-                    transcript_text,
-                    file_name="transcript.txt"
-                )
+                st.download_button("Download Transcript", transcript_text, file_name="transcript.txt")
 
             except Exception as e:
                 st.error(f"An unexpected error occurred: {e}")
-                st.error(traceback.format_exc())
             finally:
-                # Clean up the temporary file
-                if os.path.exists(video_path):
+                if video_path and os.path.exists(video_path):
                     os.unlink(video_path)
 
 if __name__ == "__main__":
